@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🖋️ Digitaler Stempel</title>
 <meta name="theme-color" content="#1a56a0">
-<link rel="stylesheet" href="style.css?v=1.0">
+<link rel="stylesheet" href="style.css?v=1.1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </head>
@@ -51,10 +51,26 @@
           <span>1. PDF-Dokument</span>
           <input type="file" id="pdfInput" accept="application/pdf,.pdf">
         </label>
-        <label class="file-field">
-          <span>2. Stempel-Bild (PNG mit transparentem Hintergrund empfohlen, auch JPG möglich)</span>
-          <input type="file" id="stampInput" accept="image/png,image/jpeg">
-        </label>
+        <div class="file-field">
+          <span>2. Stempel-Bild — Name anklicken zum Auswählen</span>
+          <div class="stamp-library" id="stampLibrary"></div>
+          <button type="button" class="btn secondary small" id="btnAddStamp">+ Neuen Stempel hinzufügen</button>
+          <div class="stamp-add-form" id="stampAddForm" hidden>
+            <label>
+              <span class="stamp-add-label">Bild (PNG mit transparentem Hintergrund empfohlen, auch JPG möglich)</span>
+              <input type="file" id="stampAddFile" accept="image/png,image/jpeg">
+            </label>
+            <label>
+              <span class="stamp-add-label">Name (z.B. Initialen)</span>
+              <input type="text" id="stampAddName" maxlength="60" placeholder="z.B. C. Reinhardt">
+            </label>
+            <p class="muted" id="stampAddError" style="display:none; color:var(--red);"></p>
+            <div class="btn-row" style="justify-content:flex-start;">
+              <button type="button" class="btn small" id="btnStampAddSave">Speichern</button>
+              <button type="button" class="btn secondary small" id="btnStampAddCancel">Abbrechen</button>
+            </div>
+          </div>
+        </div>
         <p class="status" id="status"></p>
       </div>
 
@@ -116,8 +132,8 @@
   </main>
 </div>
 
-<script src="config.js?v=1.0"></script>
-<script src="db.js?v=1.0"></script>
-<script src="app.js?v=1.0"></script>
+<script src="config.js?v=1.1"></script>
+<script src="db.js?v=1.1"></script>
+<script src="app.js?v=1.1"></script>
 </body>
 </html>

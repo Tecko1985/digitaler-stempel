@@ -116,6 +116,7 @@ button.btn, a.btn {
 button.btn:hover, a.btn:hover { opacity: 0.9; }
 button.btn.secondary, a.btn.secondary { background: var(--gray); color: var(--text); border: 1px solid var(--border); }
 button.btn.success { background: var(--green); }
+button.btn.danger { background: var(--red); }
 button.btn.small, a.btn.small { padding: 6px 12px; font-size: 13px; }
 button.btn:disabled { opacity: 0.6; cursor: default; }
 
@@ -163,6 +164,56 @@ button.btn:disabled { opacity: 0.6; cursor: default; }
   border: 1px dashed var(--border);
   border-radius: 8px;
   background: var(--gray);
+}
+
+.stamp-library { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.stamp-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--gray);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.stamp-chip.active { background: var(--blue-light); border-color: var(--blue); }
+.stamp-chip-btn {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.stamp-chip.active .stamp-chip-btn { color: var(--blue); }
+.stamp-chip-delete {
+  background: none;
+  border: none;
+  padding: 6px 10px 6px 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.stamp-chip-delete:hover { color: var(--red); }
+
+.stamp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--gray);
+}
+.stamp-add-form label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.stamp-add-label { font-weight: 600; }
+.stamp-add-form input[type="text"] {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
 }
 
 .status {
@@ -253,6 +304,7 @@ select, .custom-pages {
   gap: 10px;
   flex-wrap: wrap;
 }
+.archiv-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .archiv-row-info { display: flex; flex-direction: column; gap: 2px; }
 .archiv-filename { font-weight: 700; }
 .archiv-downloads-toggle {

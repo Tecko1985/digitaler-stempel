@@ -28,7 +28,7 @@ let currentUsername = null;
 let currentIsAdmin = false;
 let currentVorname = null;
 let currentNachname = null;
-let appData = { documents: [] };
+let appData = { documents: [], stampImages: [] };
 
 function displayName(entry) {
   return (entry.vorname || entry.nachname) ? `${entry.vorname || ""} ${entry.nachname || ""}`.trim() : entry.username;
@@ -43,6 +43,7 @@ async function saveWithConflictRetry(mutate) {
     const data = await gatewayLoad();
     appData = data && typeof data === "object" ? data : { documents: [] };
     if (!Array.isArray(appData.documents)) appData.documents = [];
+    if (!Array.isArray(appData.stampImages)) appData.stampImages = [];
     mutate(appData);
     await gatewaySave(appData);
   }
@@ -50,7 +51,6 @@ async function saveWithConflictRetry(mutate) {
 
 // ---------- Stempel-Editor-Elemente ----------
 const pdfInput = document.getElementById('pdfInput');
-const stampInput = document.getElementById('stampInput');
 const editor = document.getElementById('editor');
 const canvas = document.getElementById('pdfCanvas');
 const ctx = canvas.getContext('2d');
@@ -109,17 +109,44 @@ pdfInput.addEventListener('change', async () => {
   maybeEnableDownload();
 });
 
-stampInput.addEventListener('change', () => {
-  const file = stampInput.files[0];
-  if (!file) return;
-  if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
-    setStatus('Bitte ein PNG- oder JPG-Bild als Stempel wählen.', true);
-    stampInput.value = '';
+// ---------- Stempel-Bibliothek (geteilte, benannte Stempelbilder) ----------
+// Statt jedes Mal eine Datei auszuwählen: einmal Bild+Name hinterlegen (jeder
+// Tool-Nutzer darf das), danach reicht ein Klick auf den Namen. Löschen bleibt
+// Admins vorbehalten (gleiche Rechte-Logik wie im Archiv).
+let activeStampId = null;
+let activeStampObjectUrl = null;
+
+function renderStampLibrary() {
+  const el = document.getElementById('stampLibrary');
+  if (!el) return;
+  const list = Array.isArray(appData.stampImages) ? appData.stampImages : [];
+  if (list.length === 0) {
+    el.innerHTML = '<p class="muted">Noch keine Stempelbilder hinterlegt.</p>';
     return;
   }
-  stampFile = file;
-  const reader = new FileReader();
-  reader.onload = () => {
+  const sorted = list.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'));
+  el.innerHTML = sorted.map((s) => `
+    <span class="stamp-chip${s.id === activeStampId ? ' active' : ''}">
+      <button type="button" class="stamp-chip-btn" data-id="${escapeHtml(s.id)}">${escapeHtml(s.name)}</button>
+      ${currentIsAdmin ? `<button type="button" class="stamp-chip-delete" data-id="${escapeHtml(s.id)}" title="Stempelbild löschen">×</button>` : ''}
+    </span>
+  `).join('');
+}
+
+async function selectStampFromLibrary(id) {
+  const entry = (appData.stampImages || []).find((s) => s.id === id);
+  if (!entry) return;
+  setStatus('Stempelbild wird geladen…');
+  try {
+    const raw = await gatewayFetchFileBlob(id);
+    // contentType aus den eigenen Metadaten nehmen statt aus raw.type: die Datei
+    // liegt bei Nextcloud ohne Endung (nur die UUID als Name), der Content-Type
+    // beim GET ist daher nicht garantiert identisch zum PUT.
+    const known = entry.contentType === 'image/png' || entry.contentType === 'image/jpeg';
+    stampFile = known ? new Blob([raw], { type: entry.contentType }) : raw;
+    activeStampId = id;
+    if (activeStampObjectUrl) URL.revokeObjectURL(activeStampObjectUrl);
+    activeStampObjectUrl = URL.createObjectURL(stampFile);
     stampOverlay.onload = () => {
       stampNaturalW = stampOverlay.naturalWidth;
       stampNaturalH = stampOverlay.naturalHeight;
@@ -130,9 +157,106 @@ stampInput.addEventListener('change', () => {
       maybeEnableDownload();
       setStatus('');
     };
-    stampOverlay.src = reader.result;
-  };
-  reader.readAsDataURL(file);
+    stampOverlay.src = activeStampObjectUrl;
+    renderStampLibrary();
+  } catch (err) {
+    console.error(err);
+    setStatus('Stempelbild konnte nicht geladen werden: ' + err.message, true);
+  }
+}
+
+document.getElementById('stampLibrary').addEventListener('click', (e) => {
+  const delBtn = e.target.closest('.stamp-chip-delete');
+  if (delBtn) {
+    const id = delBtn.dataset.id;
+    const entry = (appData.stampImages || []).find((s) => s.id === id);
+    if (!entry) return;
+    if (!confirm(`Stempelbild "${entry.name}" wirklich löschen?`)) return;
+    (async () => {
+      try {
+        await gatewayDeleteFile(id);
+        await saveWithConflictRetry((data) => {
+          data.stampImages = (data.stampImages || []).filter((s) => s.id !== id);
+        });
+        if (activeStampId === id) {
+          activeStampId = null;
+          stampFile = null;
+          stampReady = false;
+          stampOverlay.hidden = true;
+          resizeHandle.hidden = true;
+          maybeEnableDownload();
+        }
+        renderStampLibrary();
+      } catch (err) {
+        alert('Löschen fehlgeschlagen: ' + err.message);
+      }
+    })();
+    return;
+  }
+  const chipBtn = e.target.closest('.stamp-chip-btn');
+  if (chipBtn) selectStampFromLibrary(chipBtn.dataset.id);
+});
+
+const btnAddStamp = document.getElementById('btnAddStamp');
+const stampAddForm = document.getElementById('stampAddForm');
+const stampAddFile = document.getElementById('stampAddFile');
+const stampAddName = document.getElementById('stampAddName');
+const stampAddError = document.getElementById('stampAddError');
+
+function closeStampAddForm() {
+  stampAddForm.hidden = true;
+  btnAddStamp.hidden = false;
+  stampAddFile.value = '';
+  stampAddName.value = '';
+  stampAddError.style.display = 'none';
+}
+
+btnAddStamp.addEventListener('click', () => {
+  stampAddForm.hidden = false;
+  btnAddStamp.hidden = true;
+});
+document.getElementById('btnStampAddCancel').addEventListener('click', closeStampAddForm);
+
+document.getElementById('btnStampAddSave').addEventListener('click', async () => {
+  const file = stampAddFile.files[0];
+  const name = stampAddName.value.trim();
+  stampAddError.style.display = 'none';
+  if (!file) {
+    stampAddError.textContent = 'Bitte ein Bild auswählen.';
+    stampAddError.style.display = '';
+    return;
+  }
+  if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+    stampAddError.textContent = 'Bitte ein PNG- oder JPG-Bild wählen.';
+    stampAddError.style.display = '';
+    return;
+  }
+  if (!name) {
+    stampAddError.textContent = 'Bitte einen Namen eingeben.';
+    stampAddError.style.display = '';
+    return;
+  }
+
+  const saveBtn = document.getElementById('btnStampAddSave');
+  saveBtn.disabled = true;
+  try {
+    const id = uuid();
+    await gatewayUploadFile(id, file, file.name, file.type);
+    const now = new Date().toISOString();
+    const who = { username: currentUsername, vorname: currentVorname, nachname: currentNachname };
+    await saveWithConflictRetry((data) => {
+      if (!Array.isArray(data.stampImages)) data.stampImages = [];
+      data.stampImages.push({ id, name, contentType: file.type, addedBy: who, addedAt: now });
+    });
+    closeStampAddForm();
+    renderStampLibrary();
+    await selectStampFromLibrary(id);
+  } catch (err) {
+    stampAddError.textContent = 'Fehler: ' + err.message;
+    stampAddError.style.display = '';
+  } finally {
+    saveBtn.disabled = false;
+  }
 });
 
 function maybeEnableDownload() {
@@ -393,6 +517,20 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- Archiv ----------
+async function deleteArchivDoc(docEntry) {
+  if (!confirm(`"${docEntry.filename}" wirklich unwiderruflich aus dem Archiv löschen?`)) return;
+  try {
+    await gatewayDeleteFile(docEntry.id);
+    await saveWithConflictRetry((data) => {
+      data.documents = (data.documents || []).filter((d) => d.id !== docEntry.id);
+    });
+    renderArchiv();
+  } catch (e) {
+    console.error('Archiv-Löschen fehlgeschlagen', e);
+    alert('Löschen fehlgeschlagen: ' + e.message);
+  }
+}
+
 async function downloadArchivDoc(docEntry) {
   try {
     const blob = await gatewayFetchFileBlob(docEntry.id);
@@ -445,7 +583,10 @@ function renderArchiv() {
             <span class="archiv-filename">${escapeHtml(d.filename)}</span>
             <span class="muted">Gestempelt von ${escapeHtml(displayName(d.stampedBy || {}))} — ${escapeHtml(fmtDate(d.stampedAt))}</span>
           </div>
-          <button type="button" class="btn secondary small btn-archiv-download" data-id="${escapeHtml(d.id)}">Herunterladen</button>
+          <div class="archiv-row-actions">
+            <button type="button" class="btn secondary small btn-archiv-download" data-id="${escapeHtml(d.id)}">Herunterladen</button>
+            ${currentIsAdmin ? `<button type="button" class="btn small danger btn-archiv-delete" data-id="${escapeHtml(d.id)}">Löschen</button>` : ''}
+          </div>
         </div>
         <button type="button" class="archiv-downloads-toggle" data-target="${detailId}">${downloads.length}× heruntergeladen — Details</button>
         <div class="archiv-downloads-detail" id="${detailId}" style="display:none;">${detailRows || '<div>Noch keine Downloads erfasst.</div>'}</div>
@@ -459,6 +600,12 @@ document.getElementById('archiv-rows').addEventListener('click', (e) => {
   if (dlBtn) {
     const entry = (appData.documents || []).find((d) => d.id === dlBtn.dataset.id);
     if (entry) downloadArchivDoc(entry);
+    return;
+  }
+  const delBtn = e.target.closest('.btn-archiv-delete');
+  if (delBtn) {
+    const entry = (appData.documents || []).find((d) => d.id === delBtn.dataset.id);
+    if (entry) deleteArchivDoc(entry);
     return;
   }
   const toggle = e.target.closest('.archiv-downloads-toggle');
@@ -523,6 +670,7 @@ function startApp() {
   document.getElementById('version-badge-2').textContent = 'v' + APP_VERSION;
   renderHeaderUser();
   renderChangelog();
+  renderStampLibrary();
 }
 
 async function init() {
@@ -536,6 +684,7 @@ async function init() {
     currentNachname = me.nachname || null;
     appData = data && typeof data === 'object' ? data : { documents: [] };
     if (!Array.isArray(appData.documents)) appData.documents = [];
+    if (!Array.isArray(appData.stampImages)) appData.stampImages = [];
     startApp();
   } catch (e) {
     if (e instanceof NotLoggedInError) {

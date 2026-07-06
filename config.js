@@ -1,9 +1,21 @@
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 
 // Größenlimit pro hochgeladener Datei — muss zum Worker-Cap (admin-worker.js) passen.
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const APP_CHANGELOG = [
+  {
+    version: "1.1",
+    groups: [
+      {
+        title: "Stempel-Bibliothek & Archiv-Verwaltung",
+        items: [
+          "Stempelbilder werden jetzt einmalig mit Namen hinterlegt — beim Stempeln reicht ein Klick auf den Namen statt jedes Mal eine Datei auszuwählen.",
+          "Admins können einzelne Archiv-Dokumente und hinterlegte Stempelbilder löschen."
+        ]
+      }
+    ]
+  },
   {
     version: "1.0",
     groups: [

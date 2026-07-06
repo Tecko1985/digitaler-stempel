@@ -81,9 +81,10 @@ function blobToBase64(blob) {
   });
 }
 
-// Lädt die gestempelte PDF (als Blob) unter der übergebenen id ins Nextcloud-
-// Verzeichnis der App hoch.
-async function gatewayUploadFile(id, blob, filename) {
+// Lädt eine Datei (als Blob) unter der übergebenen id ins Nextcloud-Verzeichnis
+// der App hoch. contentType optional, Default "application/pdf" (gestempelte
+// Archiv-Dokumente) — für Stempelbilder wird der echte Bild-Mimetyp übergeben.
+async function gatewayUploadFile(id, blob, filename, contentType) {
   if (blob.size > MAX_FILE_BYTES) {
     throw new Error("Datei ist zu groß (max. " + Math.round(MAX_FILE_BYTES / 1024 / 1024) + " MB).");
   }
@@ -93,9 +94,14 @@ async function gatewayUploadFile(id, blob, filename) {
     app: GATEWAY_APP_ID,
     id,
     name: filename,
-    contentType: "application/pdf",
+    contentType: contentType || "application/pdf",
     dataBase64
   });
+}
+
+// Löscht eine hochgeladene Datei (Archiv-Dokument oder Stempelbild).
+async function gatewayDeleteFile(id) {
+  await gatewayRequest({ action: "dav-file-delete", app: GATEWAY_APP_ID, id });
 }
 
 // Holt eine hochgeladene Datei als Blob (mit Bearer-Token; die Nextcloud-Datei
