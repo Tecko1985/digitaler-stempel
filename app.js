@@ -747,7 +747,10 @@ function insertRunIntoFirstParagraph(xmlDoc, containerEl, runXmlString) {
 
 // Liefert die Pfad(e) des Default-Headers eines Abschnitts, legt bei Bedarf
 // einen neuen (leeren) Header-Part an und verdrahtet document.xml + Content-Types.
-async function resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr) {
+// mayCreate=false: Abschnitt ohne eigene headerReference bekommt KEINEN neuen Part
+// (er erbt in OOXML den Header des vorherigen Abschnitts — ein neu angelegter
+// leerer Header würde diesen geerbten Inhalt, z. B. einen Briefkopf, ersetzen).
+async function resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr, mayCreate) {
   const existing = Array.from(sectPr.getElementsByTagNameNS(WNS, 'headerReference'));
   if (existing.length > 0) {
     return existing
@@ -755,6 +758,7 @@ async function resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctD
       .filter(Boolean)
       .map((target) => 'word/' + target.replace(/^\.\//, ''));
   }
+  if (!mayCreate) return [];
   const idx = countHeaderParts(zip) + 1;
   const headerPath = `word/header${idx}.xml`;
   zip.file(headerPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<w:hdr xmlns:w="${WNS}" xmlns:r="${RNS}"></w:hdr>`);
@@ -792,9 +796,16 @@ async function buildStampedDocxBytes() {
     insertRunIntoFirstParagraph(docXmlDoc, bodyEl, runXml);
   } else {
     const stampedHeaders = new Set();
+    // Neu anlegen dürfen wir einen Header nur, solange noch KEIN Abschnitt einen
+    // referenziert hat: spätere Abschnitte ohne eigene headerReference erben den
+    // (bereits gestempelten) Header ihres Vorgängers — für sie wäre ein frischer
+    // leerer Header ein Inhaltsverlust, kein Gewinn.
+    let anyHeaderYet = false;
     for (const sectPr of sectPrList) {
       const geo = computeStampGeometry(getSectPrPageSizeEMU(sectPr));
-      const headerPaths = await resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr);
+      const hasOwnHeader = sectPr.getElementsByTagNameNS(WNS, 'headerReference').length > 0;
+      const headerPaths = await resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr, !anyHeaderYet);
+      if (hasOwnHeader || headerPaths.length > 0) anyHeaderYet = true;
       for (const headerPath of headerPaths) {
         if (stampedHeaders.has(headerPath)) continue;
         stampedHeaders.add(headerPath);

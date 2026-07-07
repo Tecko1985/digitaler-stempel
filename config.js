@@ -1,9 +1,20 @@
-const APP_VERSION = "1.1";
+const APP_VERSION = "1.2";
 
 // Größenlimit pro hochgeladener Datei — muss zum Worker-Cap (admin-worker.js) passen.
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const APP_CHANGELOG = [
+  {
+    version: "1.2",
+    groups: [
+      {
+        title: "Fehlerbehebung Word-Stempeln",
+        items: [
+          "Bei Word-Dokumenten mit mehreren Abschnitten (z. B. eingeschobene Querformat-Seite) bleibt der geerbte Briefkopf der Folgeabschnitte jetzt erhalten — vorher konnte der Stempel-Export ihn durch eine leere Kopfzeile ersetzen."
+        ]
+      }
+    ]
+  },
   {
     version: "1.1",
     groups: [
