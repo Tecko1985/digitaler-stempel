@@ -51,9 +51,11 @@ async function saveWithConflictRetry(mutate) {
 
 // ---------- Stempel-Editor-Elemente ----------
 const pdfInput = document.getElementById('pdfInput');
+const docxInput = document.getElementById('docxInput');
 const editor = document.getElementById('editor');
 const canvas = document.getElementById('pdfCanvas');
 const ctx = canvas.getContext('2d');
+const docxContainer = document.getElementById('docxContainer');
 const canvasWrap = document.getElementById('canvasWrap');
 const stampOverlay = document.getElementById('stampOverlay');
 const resizeHandle = document.getElementById('resizeHandle');
@@ -67,11 +69,19 @@ const customPagesInput = document.getElementById('customPages');
 const downloadBtn = document.getElementById('downloadBtn');
 const statusEl = document.getElementById('status');
 
+// docType unterscheidet, welcher der beiden Editor-Pfade (PDF via pdf.js/pdf-lib,
+// Word via docx-preview/JSZip) gerade aktiv ist - beide teilen sich Canvas-Wrap,
+// Stempel-Overlay und die stamp{}-Fraktionen (cx/cy/w/rotation/opacity).
+let docType = null; // 'pdf' | 'docx'
+
 let pdfFile = null;
 let pdfJsDoc = null;
 let numPages = 0;
 let currentPage = 1;
 let renderToken = 0;
+
+let docxFile = null;
+let docxSections = []; // aktuell gerenderte section.docx-Elemente (eine je Vorschau-Seite)
 
 let stampFile = null;
 let stampNaturalW = 0;
@@ -94,6 +104,12 @@ pdfInput.addEventListener('change', async () => {
   if (!file) return;
   setStatus('PDF wird geladen…');
   try {
+    docType = 'pdf';
+    docxFile = null;
+    docxInput.value = '';
+    docxContainer.hidden = true;
+    canvas.hidden = false;
+    updatePageScopeOptions();
     pdfFile = file;
     const buf = await file.arrayBuffer();
     pdfJsDoc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -108,6 +124,104 @@ pdfInput.addEventListener('change', async () => {
   }
   maybeEnableDownload();
 });
+
+docxInput.addEventListener('change', async () => {
+  const file = docxInput.files[0];
+  if (!file) return;
+  setStatus('Word-Datei wird geladen…');
+  try {
+    docType = 'docx';
+    pdfFile = null;
+    pdfJsDoc = null;
+    pdfInput.value = '';
+    canvas.hidden = true;
+    docxContainer.hidden = false;
+    updatePageScopeOptions();
+    docxFile = file;
+    const buf = await file.arrayBuffer();
+    editor.hidden = false;
+    await renderDocxPreview(buf);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus('Word-Datei konnte nicht geladen werden: ' + err.message, true);
+  }
+  maybeEnableDownload();
+});
+
+function updatePageScopeOptions() {
+  if (docType === 'docx') {
+    pageScopeSelect.innerHTML =
+      '<option value="all">Alle Seiten (Kopfzeile)</option>' +
+      '<option value="first">Nur erste Seite</option>';
+  } else {
+    pageScopeSelect.innerHTML =
+      '<option value="all">Alle Seiten</option>' +
+      '<option value="current">Nur aktuelle Seite</option>' +
+      '<option value="custom">Bestimmte Seiten</option>';
+  }
+  customPagesInput.hidden = pageScopeSelect.value !== 'custom';
+}
+
+// CSS-Längen wie "793.7pt"/"8.5in"/"210mm", die docx-preview auf die
+// section.docx-Elemente schreibt, in echte CSS-Pixel umrechnen (96 CSS-px/Zoll,
+// browserweit fest definiert - unabhängig vom tatsächlichen Bildschirm-DPI).
+function parseCssLength(str) {
+  const m = String(str || '').match(/^([\d.]+)(pt|in|mm|cm|px)$/);
+  if (!m) return null;
+  const val = parseFloat(m[1]);
+  const pxPerUnit = { pt: 96 / 72, in: 96, mm: 96 / 25.4, cm: 96 / 2.54, px: 1 };
+  return val * (pxPerUnit[m[2]] || 1);
+}
+
+function currentPageBox() {
+  const el = docType === 'docx' ? docxContainer : canvas;
+  return { w: el.clientWidth, h: el.clientHeight };
+}
+
+function layoutDocxScale() {
+  const wrapperEl = docxContainer.querySelector('.docx-wrapper');
+  if (!wrapperEl || !docxSections.length) return;
+  wrapperEl.style.transform = 'none';
+  const firstSec = docxSections[0];
+  const naturalW = firstSec.getBoundingClientRect().width;
+  const naturalH = firstSec.getBoundingClientRect().height;
+  const targetWidth = Math.min(820, canvasWrap.parentElement.clientWidth || 820);
+  const factor = naturalW ? targetWidth / naturalW : 1;
+  wrapperEl.style.transformOrigin = 'top left';
+  wrapperEl.style.transform = `scale(${factor})`;
+  canvasWrap.style.width = targetWidth + 'px';
+  canvasWrap.style.height = (naturalH * factor) + 'px';
+}
+
+function showDocxPage(pageNum) {
+  docxSections.forEach((sec, i) => { sec.style.display = (i === pageNum - 1) ? '' : 'none'; });
+  pageIndicator.textContent = `Seite ${pageNum} / ${numPages}`;
+  positionStampOverlay();
+}
+
+async function renderDocxPreview(buf) {
+  docxContainer.innerHTML = '';
+  await docx.renderAsync(buf, docxContainer, docxContainer, {
+    inWrapper: true,
+    breakPages: true,
+    ignoreWidth: false,
+    ignoreHeight: false
+  });
+  docxSections = Array.from(docxContainer.querySelectorAll('section.docx'));
+  if (docxSections.length === 0) throw new Error('Word-Datei enthält keine erkennbaren Seiten.');
+  // Feste, sichtbar begrenzte Seitenhöhe erzwingen (docx-preview setzt nur
+  // min-height, echter Inhalt kann also über die Seite hinausragen).
+  docxSections.forEach((sec) => {
+    const hPx = parseCssLength(sec.style.minHeight) || sec.getBoundingClientRect().height;
+    sec.style.height = hPx + 'px';
+    sec.style.overflow = 'hidden';
+  });
+  numPages = docxSections.length;
+  currentPage = 1;
+  layoutDocxScale();
+  showDocxPage(currentPage);
+}
 
 // ---------- Stempel-Bibliothek (geteilte, benannte Stempelbilder) ----------
 // Statt jedes Mal eine Datei auszuwählen: einmal Bild+Name hinterlegen (jeder
@@ -260,7 +374,8 @@ document.getElementById('btnStampAddSave').addEventListener('click', async () =>
 });
 
 function maybeEnableDownload() {
-  downloadBtn.disabled = !(pdfFile && stampReady);
+  const hasDoc = docType === 'docx' ? !!docxFile : !!pdfFile;
+  downloadBtn.disabled = !(hasDoc && stampReady);
 }
 
 let activeRenderTask = null;
@@ -301,21 +416,20 @@ async function renderPage(pageNum) {
 prevPageBtn.addEventListener('click', () => {
   if (currentPage > 1) {
     currentPage--;
-    renderPage(currentPage);
+    if (docType === 'docx') showDocxPage(currentPage); else renderPage(currentPage);
   }
 });
 
 nextPageBtn.addEventListener('click', () => {
   if (currentPage < numPages) {
     currentPage++;
-    renderPage(currentPage);
+    if (docType === 'docx') showDocxPage(currentPage); else renderPage(currentPage);
   }
 });
 
 function positionStampOverlay() {
   if (!stampReady) return;
-  const cw = canvas.clientWidth;
-  const ch = canvas.clientHeight;
+  const { w: cw, h: ch } = currentPageBox();
   const w = stamp.w * cw;
   const h = w * (stampNaturalH / stampNaturalW);
   const left = stamp.cx * cw - w / 2;
@@ -338,7 +452,7 @@ stampOverlay.addEventListener('pointerdown', (e) => {
 });
 stampOverlay.addEventListener('pointermove', (e) => {
   if (!dragState) return;
-  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const { w: cw, h: ch } = currentPageBox();
   if (!cw || !ch) return;
   const dx = (e.clientX - dragState.startX) / cw;
   const dy = (e.clientY - dragState.startY) / ch;
@@ -364,7 +478,7 @@ resizeHandle.addEventListener('pointerdown', (e) => {
 });
 resizeHandle.addEventListener('pointermove', (e) => {
   if (!resizeState) return;
-  const cw = canvas.clientWidth;
+  const cw = currentPageBox().w;
   if (!cw) return;
   const dx = (e.clientX - resizeState.startX) / cw;
   stamp.w = clamp(resizeState.startW + dx, 0.03, 1.5);
@@ -460,6 +574,250 @@ async function buildStampedPdfBytes() {
   return doc.save();
 }
 
+// ---------- Word (.docx) Stempel-Export ----------
+// Word-Dateien bleiben eine editierbare .docx (User-Entscheidung), es wird also
+// direkt an der Original-OOXML operiert statt wie beim PDF-Pfad ein neues Dokument
+// zu erzeugen. Da Word Text erst beim Öffnen selbst umbricht, gibt es (anders als
+// bei PDF-Seiten) keine zuverlässige Möglichkeit, "Seite 3" gezielt zu treffen -
+// deshalb nur zwei robuste Modi: "alle Seiten" (Bild in der Kopfzeile jedes
+// Abschnitts, wiederholt sich automatisch) und "nur erste Seite" (Bild im ersten
+// Absatz des Dokumenttexts, der immer auf Seite 1 liegt). Alle XML-Teile werden
+// per DOMParser/XMLSerializer strukturell bearbeitet (nicht per Text-Ersetzung),
+// um die OOXML-Schema-Reihenfolge nicht zu verletzen.
+const EMU_PER_TWIP = 635; // 1 twip = 1/1440 Zoll, 1 Zoll = 914400 EMU
+const WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const CT_NS = 'http://schemas.openxmlformats.org/package/2006/content-types';
+const PKG_REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const IMAGE_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const HEADER_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header';
+const HEADER_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const DEFAULT_PAGE_EMU = { w: 11906 * EMU_PER_TWIP, h: 16838 * EMU_PER_TWIP }; // A4-Fallback
+
+function randomHex(len) {
+  let s = '';
+  for (let i = 0; i < len; i++) s += Math.floor(Math.random() * 16).toString(16);
+  return s.toUpperCase();
+}
+
+async function loadXmlPart(zip, path) {
+  const entry = zip.file(path);
+  if (!entry) throw new Error(`Fehlendes Word-Teil: ${path}`);
+  return new DOMParser().parseFromString(await entry.async('string'), 'application/xml');
+}
+
+async function loadOrCreateRelsPart(zip, path) {
+  const entry = zip.file(path);
+  if (entry) return new DOMParser().parseFromString(await entry.async('string'), 'application/xml');
+  return new DOMParser().parseFromString(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships xmlns="${PKG_REL_NS}"></Relationships>`,
+    'application/xml'
+  );
+}
+
+function serializeXmlPart(xmlDoc) {
+  // Manche Browser (Chrome) geben bei serializeToString() bereits selbst eine
+  // <?xml ...?>-Deklaration aus, wenn das geparste Dokument eine hatte - vorher
+  // strippen, damit nicht am Ende zwei Deklarationen im Part landen (ungueltiges XML).
+  const serialized = new XMLSerializer().serializeToString(xmlDoc).replace(/^<\?xml[^>]*\?>\s*/, '');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + serialized;
+}
+
+function toRelsPath(partPath) {
+  const idx = partPath.lastIndexOf('/');
+  return partPath.slice(0, idx + 1) + '_rels/' + partPath.slice(idx + 1) + '.rels';
+}
+
+function addRelationship(relsDoc, type, target) {
+  const root = relsDoc.documentElement;
+  const existingIds = Array.from(root.getElementsByTagNameNS(PKG_REL_NS, 'Relationship'))
+    .map((r) => parseInt((r.getAttribute('Id') || '').replace(/^rId/, ''), 10))
+    .filter((n) => !isNaN(n));
+  const nextId = 'rId' + (existingIds.length ? Math.max(...existingIds) + 1 : 1);
+  const rel = relsDoc.createElementNS(PKG_REL_NS, 'Relationship');
+  rel.setAttribute('Id', nextId);
+  rel.setAttribute('Type', type);
+  rel.setAttribute('Target', target);
+  root.appendChild(rel);
+  return nextId;
+}
+
+function findRelationshipTarget(relsDoc, id) {
+  const rel = Array.from(relsDoc.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).find((r) => r.getAttribute('Id') === id);
+  return rel ? rel.getAttribute('Target') : null;
+}
+
+function ensureDefaultContentType(ctDoc, ext, mime) {
+  const root = ctDoc.documentElement;
+  const exists = Array.from(root.getElementsByTagNameNS(CT_NS, 'Default'))
+    .some((d) => (d.getAttribute('Extension') || '').toLowerCase() === ext.toLowerCase());
+  if (exists) return;
+  const el = ctDoc.createElementNS(CT_NS, 'Default');
+  el.setAttribute('Extension', ext);
+  el.setAttribute('ContentType', mime);
+  root.appendChild(el);
+}
+
+function addContentTypeOverride(ctDoc, partName, mime) {
+  const root = ctDoc.documentElement;
+  const exists = Array.from(root.getElementsByTagNameNS(CT_NS, 'Override')).some((o) => o.getAttribute('PartName') === partName);
+  if (exists) return;
+  const el = ctDoc.createElementNS(CT_NS, 'Override');
+  el.setAttribute('PartName', partName);
+  el.setAttribute('ContentType', mime);
+  root.appendChild(el);
+}
+
+function countHeaderParts(zip) {
+  return Object.keys(zip.files).filter((n) => /^word\/header\d+\.xml$/.test(n)).length;
+}
+
+function uniqueMediaName(zip, ext) {
+  let n = 1;
+  while (zip.file(`word/media/stempelbild_${n}.${ext}`)) n++;
+  return `stempelbild_${n}.${ext}`;
+}
+
+function findSectPrList(docXmlDoc) {
+  return Array.from(docXmlDoc.getElementsByTagNameNS(WNS, 'sectPr'));
+}
+
+function getSectPrPageSizeEMU(sectPr) {
+  const pgSz = sectPr.getElementsByTagNameNS(WNS, 'pgSz')[0];
+  const wTwips = pgSz ? parseInt(pgSz.getAttributeNS(WNS, 'w'), 10) : NaN;
+  const hTwips = pgSz ? parseInt(pgSz.getAttributeNS(WNS, 'h'), 10) : NaN;
+  if (!wTwips || !hTwips) return DEFAULT_PAGE_EMU;
+  return { w: wTwips * EMU_PER_TWIP, h: hTwips * EMU_PER_TWIP };
+}
+
+// Gleiche Fraktionen (stamp.cx/cy/w) wie beim PDF-Pfad, aber OOXML dreht ein
+// a:xfrm-Shape (anders als pdf-lib) um seinen eigenen Mittelpunkt und misst
+// Rotation im Uhrzeigersinn - das entspricht direkt CSS rotate(), keine
+// Vorzeichen-/Pivot-Korrektur wie bei buildStampedPdfBytes nötig.
+function computeStampGeometry(pageEMU) {
+  const wEmu = stamp.w * pageEMU.w;
+  const hEmu = wEmu * (stampNaturalH / stampNaturalW);
+  const xEmu = stamp.cx * pageEMU.w - wEmu / 2;
+  const yEmu = stamp.cy * pageEMU.h - hEmu / 2;
+  let rotUnits = Math.round(stamp.rotation * 60000) % 21600000;
+  if (rotUnits < 0) rotUnits += 21600000;
+  const alphaAmt = clamp(stamp.opacity, 0, 100) * 1000;
+  return { wEmu, hEmu, xEmu, yEmu, rotUnits, alphaAmt };
+}
+
+function buildDrawingRunXml({ wEmu, hEmu, xEmu, yEmu, rotUnits, alphaAmt, relId, docPrId }) {
+  return (
+    `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
+    `<wp:anchor xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ` +
+    `xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" ` +
+    `distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251658240" ` +
+    `behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" ` +
+    `wp14:anchorId="${randomHex(8)}" wp14:editId="${randomHex(8)}">` +
+    `<wp:simplePos x="0" y="0"/>` +
+    `<wp:positionH relativeFrom="page"><wp:posOffset>${Math.round(xEmu)}</wp:posOffset></wp:positionH>` +
+    `<wp:positionV relativeFrom="page"><wp:posOffset>${Math.round(yEmu)}</wp:posOffset></wp:positionV>` +
+    `<wp:extent cx="${Math.round(wEmu)}" cy="${Math.round(hEmu)}"/>` +
+    `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+    `<wp:wrapNone/>` +
+    `<wp:docPr id="${docPrId}" name="Stempel${docPrId}"/>` +
+    `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:nvPicPr><pic:cNvPr id="${docPrId}" name="Stempelbild"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${relId}" xmlns:r="${RNS}"><a:alphaModFix amt="${Math.round(alphaAmt)}"/></a:blip>` +
+    `<a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm rot="${rotUnits}"><a:off x="0" y="0"/><a:ext cx="${Math.round(wEmu)}" cy="${Math.round(hEmu)}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`
+  );
+}
+
+function insertRunIntoFirstParagraph(xmlDoc, containerEl, runXmlString) {
+  let p = Array.from(containerEl.children).find((el) => el.localName === 'p');
+  if (!p) {
+    p = xmlDoc.createElementNS(WNS, 'w:p');
+    containerEl.insertBefore(p, containerEl.firstChild);
+  }
+  const wrapped = `<w:tmp xmlns:w="${WNS}">${runXmlString}</w:tmp>`;
+  const parsedRun = new DOMParser().parseFromString(wrapped, 'application/xml').documentElement.firstElementChild;
+  p.insertBefore(xmlDoc.importNode(parsedRun, true), p.firstChild);
+}
+
+// Liefert die Pfad(e) des Default-Headers eines Abschnitts, legt bei Bedarf
+// einen neuen (leeren) Header-Part an und verdrahtet document.xml + Content-Types.
+async function resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr) {
+  const existing = Array.from(sectPr.getElementsByTagNameNS(WNS, 'headerReference'));
+  if (existing.length > 0) {
+    return existing
+      .map((href) => findRelationshipTarget(docRelsDoc, href.getAttributeNS(RNS, 'id')))
+      .filter(Boolean)
+      .map((target) => 'word/' + target.replace(/^\.\//, ''));
+  }
+  const idx = countHeaderParts(zip) + 1;
+  const headerPath = `word/header${idx}.xml`;
+  zip.file(headerPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<w:hdr xmlns:w="${WNS}" xmlns:r="${RNS}"></w:hdr>`);
+  addContentTypeOverride(ctDoc, `/${headerPath}`, HEADER_MIME);
+  const relId = addRelationship(docRelsDoc, HEADER_REL_TYPE, `header${idx}.xml`);
+  const headerRefNode = docXmlDoc.createElementNS(WNS, 'w:headerReference');
+  headerRefNode.setAttributeNS(WNS, 'w:type', 'default');
+  headerRefNode.setAttributeNS(RNS, 'r:id', relId);
+  sectPr.insertBefore(headerRefNode, sectPr.firstChild);
+  return [headerPath];
+}
+
+async function buildStampedDocxBytes() {
+  const zip = await JSZip.loadAsync(await docxFile.arrayBuffer());
+  const stampBytes = await stampFile.arrayBuffer();
+  const isPng = stampFile.type === 'image/png';
+  const imgExt = isPng ? 'png' : 'jpeg';
+  const imgName = uniqueMediaName(zip, imgExt);
+  zip.file(`word/media/${imgName}`, stampBytes);
+
+  const ctDoc = await loadXmlPart(zip, '[Content_Types].xml');
+  ensureDefaultContentType(ctDoc, imgExt, isPng ? 'image/png' : 'image/jpeg');
+
+  const docXmlDoc = await loadXmlPart(zip, 'word/document.xml');
+  const docRelsDoc = await loadOrCreateRelsPart(zip, 'word/_rels/document.xml.rels');
+  const sectPrList = findSectPrList(docXmlDoc);
+  if (sectPrList.length === 0) throw new Error('Kein Abschnitt (sectPr) in der Word-Datei gefunden - unerwartetes Dateiformat.');
+  let nextDocPrId = 900001 + Math.floor(Math.random() * 8000);
+
+  if (pageScopeSelect.value === 'first') {
+    const geo = computeStampGeometry(getSectPrPageSizeEMU(sectPrList[0]));
+    const relId = addRelationship(docRelsDoc, IMAGE_REL_TYPE, `media/${imgName}`);
+    const runXml = buildDrawingRunXml({ ...geo, relId, docPrId: nextDocPrId++ });
+    const bodyEl = docXmlDoc.getElementsByTagNameNS(WNS, 'body')[0];
+    insertRunIntoFirstParagraph(docXmlDoc, bodyEl, runXml);
+  } else {
+    const stampedHeaders = new Set();
+    for (const sectPr of sectPrList) {
+      const geo = computeStampGeometry(getSectPrPageSizeEMU(sectPr));
+      const headerPaths = await resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctDoc, sectPr);
+      for (const headerPath of headerPaths) {
+        if (stampedHeaders.has(headerPath)) continue;
+        stampedHeaders.add(headerPath);
+        const headerXmlDoc = await loadXmlPart(zip, headerPath);
+        const headerRelsPath = toRelsPath(headerPath);
+        const headerRelsDoc = await loadOrCreateRelsPart(zip, headerRelsPath);
+        const relId = addRelationship(headerRelsDoc, IMAGE_REL_TYPE, `media/${imgName}`);
+        const runXml = buildDrawingRunXml({ ...geo, relId, docPrId: nextDocPrId++ });
+        const hdrEl = headerXmlDoc.getElementsByTagNameNS(WNS, 'hdr')[0];
+        insertRunIntoFirstParagraph(headerXmlDoc, hdrEl, runXml);
+        zip.file(headerPath, serializeXmlPart(headerXmlDoc));
+        zip.file(headerRelsPath, serializeXmlPart(headerRelsDoc));
+      }
+    }
+  }
+
+  zip.file('[Content_Types].xml', serializeXmlPart(ctDoc));
+  zip.file('word/document.xml', serializeXmlPart(docXmlDoc));
+  zip.file('word/_rels/document.xml.rels', serializeXmlPart(docRelsDoc));
+
+  return zip.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME });
+}
+
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -472,18 +830,29 @@ function triggerDownload(blob, filename) {
 }
 
 downloadBtn.addEventListener('click', async () => {
-  if (!pdfFile || !stampReady) return;
+  const hasDoc = docType === 'docx' ? !!docxFile : !!pdfFile;
+  if (!hasDoc || !stampReady) return;
   downloadBtn.disabled = true;
-  setStatus('PDF wird gestempelt…');
+  setStatus(docType === 'docx' ? 'Word-Datei wird gestempelt…' : 'PDF wird gestempelt…');
   try {
-    const outBytes = await buildStampedPdfBytes();
-    const blob = new Blob([outBytes], { type: 'application/pdf' });
-    const baseName = pdfFile.name.replace(/\.pdf$/i, '');
-    const filename = `${baseName}-gestempelt.pdf`;
+    let blob, baseName, filename, contentType;
+    if (docType === 'docx') {
+      const outBytes = await buildStampedDocxBytes();
+      contentType = DOCX_MIME;
+      blob = new Blob([outBytes], { type: contentType });
+      baseName = docxFile.name.replace(/\.docx$/i, '');
+      filename = `${baseName}-gestempelt.docx`;
+    } else {
+      const outBytes = await buildStampedPdfBytes();
+      contentType = 'application/pdf';
+      blob = new Blob([outBytes], { type: contentType });
+      baseName = pdfFile.name.replace(/\.pdf$/i, '');
+      filename = `${baseName}-gestempelt.pdf`;
+    }
 
     setStatus('Dokument wird im Archiv abgelegt…');
     const id = uuid();
-    await gatewayUploadFile(id, blob, filename);
+    await gatewayUploadFile(id, blob, filename, contentType);
 
     const now = new Date().toISOString();
     const who = { username: currentUsername, vorname: currentVorname, nachname: currentNachname };
@@ -500,10 +869,10 @@ downloadBtn.addEventListener('click', async () => {
 
     triggerDownload(blob, filename);
     renderArchiv();
-    setStatus('Fertig! Die gestempelte PDF wurde archiviert und heruntergeladen.');
+    setStatus(docType === 'docx' ? 'Fertig! Die gestempelte Word-Datei wurde archiviert und heruntergeladen.' : 'Fertig! Die gestempelte PDF wurde archiviert und heruntergeladen.');
   } catch (err) {
     console.error(err);
-    setStatus('Fehler beim Erzeugen der PDF: ' + err.message, true);
+    setStatus('Fehler beim Erzeugen des Dokuments: ' + err.message, true);
   } finally {
     downloadBtn.disabled = false;
   }
@@ -512,7 +881,8 @@ downloadBtn.addEventListener('click', async () => {
 window.addEventListener('resize', () => {
   clearTimeout(window.__stempelResizeDebounce);
   window.__stempelResizeDebounce = setTimeout(() => {
-    if (pdfJsDoc) renderPage(currentPage);
+    if (docType === 'pdf' && pdfJsDoc) renderPage(currentPage);
+    else if (docType === 'docx' && docxSections.length) { layoutDocxScale(); showDocxPage(currentPage); }
   }, 200);
 });
 

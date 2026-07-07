@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🖋️ Digitaler Stempel</title>
 <meta name="theme-color" content="#1a56a0">
-<link rel="stylesheet" href="style.css?v=1.0">
+<link rel="stylesheet" href="style.css?v=1.1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
 </head>
 <body>
 
@@ -47,10 +49,19 @@
 
     <section class="tab-section active" id="tab-stempeln">
       <div class="card upload-panel">
-        <label class="file-field">
-          <span>1. PDF-Dokument</span>
-          <input type="file" id="pdfInput" accept="application/pdf,.pdf">
-        </label>
+        <div class="file-field">
+          <span>1. Dokument (PDF oder Word)</span>
+          <div class="doc-input-row">
+            <label class="doc-input-col">
+              <span class="doc-input-caption">PDF</span>
+              <input type="file" id="pdfInput" accept="application/pdf,.pdf">
+            </label>
+            <label class="doc-input-col">
+              <span class="doc-input-caption">Word (.docx)</span>
+              <input type="file" id="docxInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            </label>
+          </div>
+        </div>
         <div class="file-field">
           <span>2. Stempel-Bild — Name anklicken zum Auswählen</span>
           <div class="stamp-library" id="stampLibrary"></div>
@@ -104,11 +115,12 @@
 
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="pdfCanvas"></canvas>
+          <div id="docxContainer" hidden></div>
           <img id="stampOverlay" alt="Stempel" hidden draggable="false">
           <div class="resize-handle" id="resizeHandle" hidden></div>
         </div>
 
-        <button type="button" id="downloadBtn" class="btn success" disabled>PDF stempeln &amp; herunterladen</button>
+        <button type="button" id="downloadBtn" class="btn success" disabled>Dokument stempeln &amp; herunterladen</button>
       </div>
     </section>
 
@@ -132,8 +144,8 @@
   </main>
 </div>
 
-<script src="config.js?v=1.0"></script>
+<script src="config.js?v=1.1"></script>
 <script src="db.js?v=1.0"></script>
-<script src="app.js?v=1.0"></script>
+<script src="app.js?v=1.1"></script>
 </body>
 </html>
