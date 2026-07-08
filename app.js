@@ -1036,6 +1036,12 @@ function setupTabs() {
   document.querySelectorAll('nav button[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
+
+  const versionBadgeHeader = document.getElementById('version-badge');
+  versionBadgeHeader.addEventListener('click', () => activateTab('archiv'));
+  versionBadgeHeader.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab('archiv'); }
+  });
 }
 
 function showConnectScreen(errorMsg) {

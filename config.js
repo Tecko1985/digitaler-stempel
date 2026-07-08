@@ -1,9 +1,20 @@
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.3";
 
 // Größenlimit pro hochgeladener Datei — muss zum Worker-Cap (admin-worker.js) passen.
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const APP_CHANGELOG = [
+  {
+    version: "1.3",
+    groups: [
+      {
+        title: "Versionsbadge",
+        items: [
+          "Der Versionshinweis oben neben dem Titel ist jetzt anklickbar und führt direkt zu dieser Änderungsübersicht im Archiv-Tab."
+        ]
+      }
+    ]
+  },
   {
     version: "1.2",
     groups: [
