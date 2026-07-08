@@ -11,6 +11,10 @@ Teil der [Tools-Übersicht](https://tecko1985.github.io/ToolsUebersicht/).
 - **Stempeln** — PDF hochladen, Stempel-Bild frei positionieren, skalieren, drehen
   und in der Deckkraft anpassen. Anwendbar auf alle Seiten, nur die aktuelle Seite
   oder bestimmte ausgewählte Seiten.
+- **Word-Dateien (.docx) stempeln** — alternativ zu PDF auch eine Word-Datei
+  hochladen; das Ergebnis bleibt eine bearbeitbare .docx-Datei mit eingebettetem
+  Stempelbild. Bei Word nur „Alle Seiten“ (Kopfzeile, wiederholt sich automatisch)
+  oder „Nur erste Seite“ wählbar.
 - **Stempelbild-Bibliothek** — Stempelbilder werden einmalig mit Namen hinterlegt
   (PNG mit transparentem Hintergrund empfohlen, auch JPG möglich). Beim Stempeln
   reicht danach ein Klick auf den Namen statt jedes Mal eine Datei auszuwählen.
