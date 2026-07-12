@@ -1,9 +1,20 @@
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 
 // Größenlimit pro hochgeladener Datei — muss zum Worker-Cap (admin-worker.js) passen.
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const APP_CHANGELOG = [
+  {
+    version: "1.1",
+    groups: [
+      {
+        title: "Bearbeiten-Recht",
+        items: [
+          "Stempelbild löschen, Archiv-Ansicht aller Nutzer und Dokumente aus dem Archiv löschen jetzt an das Bearbeiten-Recht der Gruppen-Verwaltung gekoppelt statt an Admin-Status allein. Stempeln selbst und die eigene Ansicht bleiben für jeden mit Tool-Zugriff unverändert."
+        ]
+      }
+    ]
+  },
   {
     version: "1.0",
     groups: [

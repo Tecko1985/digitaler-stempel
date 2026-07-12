@@ -26,6 +26,9 @@ function fmtDate(iso) {
 // ---------- Gateway-Nutzer / App-Status ----------
 let currentUsername = null;
 let currentIsAdmin = false;
+let currentCanEdit = false;
+
+function canEdit() { return currentIsAdmin || currentCanEdit; }
 let currentVorname = null;
 let currentNachname = null;
 let appData = { documents: [], stampImages: [] };
@@ -242,7 +245,7 @@ function renderStampLibrary() {
   el.innerHTML = sorted.map((s) => `
     <span class="stamp-chip${s.id === activeStampId ? ' active' : ''}">
       <button type="button" class="stamp-chip-btn" data-id="${escapeHtml(s.id)}">${escapeHtml(s.name)}</button>
-      ${currentIsAdmin ? `<button type="button" class="stamp-chip-delete" data-id="${escapeHtml(s.id)}" title="Stempelbild löschen">×</button>` : ''}
+      ${canEdit() ? `<button type="button" class="stamp-chip-delete" data-id="${escapeHtml(s.id)}" title="Stempelbild löschen">×</button>` : ''}
     </span>
   `).join('');
 }
@@ -282,6 +285,7 @@ async function selectStampFromLibrary(id) {
 document.getElementById('stampLibrary').addEventListener('click', (e) => {
   const delBtn = e.target.closest('.stamp-chip-delete');
   if (delBtn) {
+    if (!canEdit()) return;
     const id = delBtn.dataset.id;
     const entry = (appData.stampImages || []).find((s) => s.id === id);
     if (!entry) return;
@@ -899,6 +903,7 @@ window.addEventListener('resize', () => {
 
 // ---------- Archiv ----------
 async function deleteArchivDoc(docEntry) {
+  if (!canEdit()) return;
   if (!confirm(`"${docEntry.filename}" wirklich unwiderruflich aus dem Archiv löschen?`)) return;
   try {
     await gatewayDeleteFile(docEntry.id);
@@ -939,13 +944,13 @@ function renderArchiv() {
   const titleEl = document.getElementById('archiv-title');
   if (!rowsEl) return;
 
-  subtitleEl.textContent = currentIsAdmin
-    ? 'Alle im Verein gestempelten Dokumente (Admin-Ansicht).'
+  subtitleEl.textContent = canEdit()
+    ? 'Alle im Verein gestempelten Dokumente (Bearbeiten-Recht).'
     : 'Alle mit deinem Konto gestempelten Dokumente.';
-  titleEl.textContent = currentIsAdmin ? 'Archiv (alle Nutzer)' : 'Archiv';
+  titleEl.textContent = canEdit() ? 'Archiv (alle Nutzer)' : 'Archiv';
 
   const all = Array.isArray(appData.documents) ? appData.documents : [];
-  const visible = (currentIsAdmin ? all : all.filter((d) => d.stampedBy && d.stampedBy.username === currentUsername))
+  const visible = (canEdit() ? all : all.filter((d) => d.stampedBy && d.stampedBy.username === currentUsername))
     .slice()
     .sort((a, b) => String(b.stampedAt || '').localeCompare(String(a.stampedAt || '')));
 
@@ -966,7 +971,7 @@ function renderArchiv() {
           </div>
           <div class="archiv-row-actions">
             <button type="button" class="btn secondary small btn-archiv-download" data-id="${escapeHtml(d.id)}">Herunterladen</button>
-            ${currentIsAdmin ? `<button type="button" class="btn small danger btn-archiv-delete" data-id="${escapeHtml(d.id)}">Löschen</button>` : ''}
+            ${canEdit() ? `<button type="button" class="btn small danger btn-archiv-delete" data-id="${escapeHtml(d.id)}">Löschen</button>` : ''}
           </div>
         </div>
         <button type="button" class="archiv-downloads-toggle" data-target="${detailId}">${downloads.length}× heruntergeladen — Details</button>
@@ -1067,6 +1072,7 @@ async function init() {
     const [me, data] = await Promise.all([fetchMe(), gatewayLoad()]);
     currentUsername = me.username;
     currentIsAdmin = !!me.isAdmin;
+    currentCanEdit = !!me.canEdit;
     currentVorname = me.vorname || null;
     currentNachname = me.nachname || null;
     appData = data && typeof data === 'object' ? data : { documents: [] };
