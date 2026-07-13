@@ -1,4 +1,4 @@
-const APP_VERSION = "1.1";
+const APP_VERSION = "1.0";
 
 // Größenlimit pro hochgeladener Datei — muss zum Worker-Cap (admin-worker.js) passen.
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
