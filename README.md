@@ -18,10 +18,13 @@ Teil der [Tools-Übersicht](https://tecko1985.github.io/ToolsUebersicht/).
 - **Stempelbild-Bibliothek** — Stempelbilder werden einmalig mit Namen hinterlegt
   (PNG mit transparentem Hintergrund empfohlen, auch JPG möglich). Beim Stempeln
   reicht danach ein Klick auf den Namen statt jedes Mal eine Datei auszuwählen.
-  Hinzufügen kann jeder berechtigte Nutzer, Löschen ist Admins vorbehalten.
+  Hinzufügen kann jeder berechtigte Nutzer, Löschen ist Admins und
+  Bearbeiter-Gruppen vorbehalten.
 - **Archiv & Audit-Trail** — jedes gestempelte Dokument wird automatisch im
   Vereins-Archiv abgelegt: wer es gestempelt hat und wann, sowie wer es wann
-  heruntergeladen hat. Admins können einzelne Archiv-Dokumente löschen.
+  heruntergeladen hat. Admins und Bearbeiter-Gruppen sehen das komplette Archiv
+  aller Nutzer und können einzelne Dokumente löschen; alle anderen sehen dort
+  nur die eigenen gestempelten Dokumente.
 - **Zugriff** — nur für berechtigte Nutzer sichtbar, Anmeldung über die
   Tools-Übersicht.
 
