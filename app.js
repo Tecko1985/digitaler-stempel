@@ -1043,9 +1043,9 @@ function setupTabs() {
   });
 
   const versionBadgeHeader = document.getElementById('version-badge');
-  versionBadgeHeader.addEventListener('click', () => activateTab('archiv'));
+  versionBadgeHeader.addEventListener('click', () => activateTab('info'));
   versionBadgeHeader.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab('archiv'); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab('info'); }
   });
 }
 
