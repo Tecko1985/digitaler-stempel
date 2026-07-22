@@ -6,10 +6,10 @@
 <title>🖋️ Digitaler Stempel</title>
 <meta name="theme-color" content="#1a56a0">
 <link rel="stylesheet" href="style.css?v=1.0">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
+<!-- pdf.js, pdf-lib, JSZip und docx-preview standen hier fest im <head> und
+     hielten damit jeden Seitenaufruf auf (zusammen rund 1 MB roh) -- auch den,
+     bei dem nur das Archiv angesehen wird. Sie werden jetzt beim ersten Bedarf
+     nachgeladen, siehe ladeBibliothek() ganz oben in app.js. -->
 </head>
 <body>
 
@@ -154,7 +154,7 @@
 </div>
 
 <script src="config.js?v=1.0"></script>
-<script src="db.js?v=1.0"></script>
-<script src="app.js?v=1.1"></script>
+<script src="db.js?v=1.1"></script>
+<script src="app.js?v=1.2"></script>
 </body>
 </html>

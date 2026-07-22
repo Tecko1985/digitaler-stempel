@@ -1,4 +1,41 @@
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// Die vier Bibliotheken (pdf.js 313 KB, pdf-lib 513 KB, JSZip 95 KB,
+// docx-preview 73 KB) standen fest im <head> und hielten damit JEDEN
+// Seitenaufruf auf -- auch den, bei dem nur das Archiv angesehen wird. Sie
+// haengen alle an einer konkreten Handlung: pdf.js/pdf-lib am PDF-Weg,
+// JSZip/docx-preview am Word-Weg. Deshalb werden sie beim ersten Bedarf
+// nachgeladen. Jeder weitere Aufruf bekommt dieselbe Promise; ein Fehlschlag
+// wird vergessen, damit ein zweiter Versuch moeglich bleibt.
+const bibliotheken = new Map();
+function ladeBibliothek(url) {
+  if (bibliotheken.has(url)) return bibliotheken.get(url);
+  const p = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      bibliotheken.delete(url);
+      reject(new Error('Bibliothek konnte nicht geladen werden: ' + url));
+    };
+    document.head.appendChild(s);
+  });
+  bibliotheken.set(url, p);
+  return p;
+}
+
+// workerSrc erst NACH dem Laden setzen -- vorher gibt es kein pdfjsLib.
+async function ladePdfJs() {
+  await ladeBibliothek('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+function ladePdfLib() {
+  return ladeBibliothek('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
+}
+function ladeJsZip() {
+  return ladeBibliothek('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+}
+function ladeDocxPreview() {
+  return ladeBibliothek('https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js');
+}
 
 // ---------- Helpers ----------
 function uuid() {
@@ -114,6 +151,7 @@ pdfInput.addEventListener('change', async () => {
     canvas.hidden = false;
     updatePageScopeOptions();
     pdfFile = file;
+    await ladePdfJs();
     const buf = await file.arrayBuffer();
     pdfJsDoc = await pdfjsLib.getDocument({ data: buf }).promise;
     numPages = pdfJsDoc.numPages;
@@ -204,6 +242,7 @@ function showDocxPage(pageNum) {
 }
 
 async function renderDocxPreview(buf) {
+  await ladeDocxPreview();
   docxContainer.innerHTML = '';
   await docx.renderAsync(buf, docxContainer, docxContainer, {
     inWrapper: true,
@@ -539,6 +578,7 @@ function targetPages() {
 }
 
 async function buildStampedPdfBytes() {
+  await ladePdfLib();
   const pdfBytes = await pdfFile.arrayBuffer();
   const stampBytes = await stampFile.arrayBuffer();
   const { PDFDocument, degrees } = PDFLib;
@@ -776,6 +816,7 @@ async function resolveOrCreateDefaultHeaderPaths(zip, docXmlDoc, docRelsDoc, ctD
 }
 
 async function buildStampedDocxBytes() {
+  await ladeJsZip();
   const zip = await JSZip.loadAsync(await docxFile.arrayBuffer());
   const stampBytes = await stampFile.arrayBuffer();
   const isPng = stampFile.type === 'image/png';
@@ -1069,7 +1110,13 @@ async function init() {
   setupTabs();
   if (!getSessionToken()) { showConnectScreen(); return; }
   try {
-    const [me, data] = await Promise.all([fetchMe(), gatewayLoad()]);
+    // Nacheinander statt Promise.all — und das ist hier schneller, nicht
+    // langsamer: dav-load liefert das "me" mittlerweile gratis mit (der Worker
+    // hat nutzer.json und die Rechte-Datei für diesen Request ohnehin gelesen),
+    // der zweite Aufruf kostet also gar keinen Request mehr. Parallel wären es
+    // zwei echte Requests mit zwei Session-Prüfungen.
+    const data = await gatewayLoad();
+    const me = await fetchMe();
     currentUsername = me.username;
     currentIsAdmin = !!me.isAdmin;
     currentCanEdit = !!me.canEdit;
